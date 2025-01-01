@@ -9,7 +9,7 @@ using namespace std;
 
 // Function prototypes
 void readVectors(const string &filename, vector<float> &vec1, vector<float> &vec2);
-int verifySize(const vector<float> &vec1, const vector<float> &vec2)
+int verifySize(const vector<float> &vec1, const vector<float> &vec2);
 vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
 __global__ void addVectorsKernel(const float *vec1, const float *vec2, float *result, int size);
 vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
@@ -26,15 +26,15 @@ int main() {
 
     // CPU Implementation
     // Function: addVectorsCPU
-    addVectorsCPU(vec1, vec2, vectorSize);
+    vector<float> resultCPU = addVectorsCPU(vec1, vec2, vectorSize);
 
     // CUDA Implementation
     // Function: addVectorsCUDA
-    vector<float> resultCPU = addVectorsCPU(vec1, vec2, vectorSize);
+    vector<float> resultCuda = addVectorsCUDA(vec1, vec2, vectorSize);
 
     // Verify results
     // Function: verifyResults
-    vector<float> resultCuda = addVectorsCUDA(vec1, vec2, vectorSize);
+    verifyResults(resultCPU, resultCuda);
 
     return 0;
 }
@@ -61,11 +61,13 @@ void readVectors(const string &filename, vector<float> &vec1, vector<float> &vec
 // CPU implementation of vector addition
 // Skeleton for: addVectorsCPU
 vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2, int vectorSize){
-    vector<float> result(size);
+    vector<float> result(vectorSize);
 
-    for (int i = 0; i < size; i++) {
+    for (int i = 0; i < vectorSize; i++) {
         result[i] = vec1[i] + vec2[i];
     }
+
+    return result;
 }
 
 // CUDA kernel for vector addition
@@ -87,8 +89,8 @@ __global__ void addVectorsKernel(const float *vec1, const float *vec2, float *re
 
 // CUDA implementation of vector addition
 // Skeleton for: addVectorsCUDA
-vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int VectorSize) {
-    size_t bytes = VectorSize * sizeof(float); //size of vectors we will be adding
+vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int vectorSize) {
+    size_t bytes = vectorSize * sizeof(float); //size of vectors we will be adding
 
     // give our vectrors on GPU the size of a vector we will add
     float *d_vec1, *d_vec2, *d_result;
@@ -102,14 +104,14 @@ vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec
 
     // Launch kernel
     int threads = 256;
-    int blocks = (VectorSize + threads - 1) / threads; //need to calculate the min number of blocks needed to process all elements, threads+1 to round up our blocks
+    int blocks = (vectorSize + threads - 1) / threads; //need to calculate the min number of blocks needed to process all elements, threads+1 to round up our blocks
     //grid with blocks and threads in each block
     //passes addresses of vectors allocated on the gpu
     //thread then processes global id and id determines which float in vector each thread processes
-    addVectorsKernel<<<blocks, threads>>>(d_vec1, d_vec2, d_result, VectorSize); 
+    addVectorsKernel<<<blocks, threads>>>(d_vec1, d_vec2, d_result, vectorSize); 
 
     // Copy result back to host
-    vector<float> result(size);
+    vector<float> result(vectorSize);
     cudaMemcpy(result.data(), d_result, bytes, cudaMemcpyDeviceToHost);
 
     // Free device memory
@@ -133,3 +135,18 @@ int verifySize(const vector<float> &vec1, const vector<float> &vec2) {
     return vec1.size();
 }
 // Skeleton for: verifyResults
+void verifyResults(const vector<float> &resultCPU, const vector<float> &resultCuda){
+    if(resultCPU.size() != resultCuda.size()){
+        cerr << "Error: Results vector sizes do not match." << endl;
+        exit(EXIT_FAILURE);
+    }
+
+    for(size_t i = 0; i < resultCPU.size(); ++i){
+        if(abs(resultCPU[i] - resultCuda[i]) > 1e-5){
+            cerr << "Error: Mismatch at index " << i << ": CPU=" << resultCPU[i] << ", GPU=" << resultCuda[i] << endl;
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    cout << "Match!"<< endl;
+}

@@ -17,32 +17,18 @@ vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec
 void verifyResults(const vector<float> &cpuResult, const vector<float> &gpuResult);
 void generateRandomVectors(vector<float> &vec1, vector<float> &vec2, int size, float min, float max);
 void printVector(const vector<float> &vec, const string &label);
+void testSuite(int size, float min, float max);
 
 int main() {
-    // Input vectors
-    vector<float> vec1, vec2;
+    // Parameters for test suitef
+    int size = 10000000, testRuns = 10; 
+    float min = -10000.0, max = 10000.0; 
 
-    // Read vectors from file
-    // readVectors("vectors.txt", vec1, vec2);
-
-    generateRandomVectors(vec1, vec2, 10, 0, 10);
-
-    int vectorSize = verifySize(vec1 , vec2); //maybe make this const
-
-    // CPU Implementation
-    vector<float> resultCPU = addVectorsCPU(vec1, vec2, vectorSize);
-
-    // CUDA Implementation
-    vector<float> resultCuda = addVectorsCUDA(vec1, vec2, vectorSize);
-
-    // Verify results
-    verifyResults(resultCPU, resultCuda);
-
-    printVector(vec1, "Vec1");
-    printVector(vec2, "Vec2");
-    printVector(resultCPU, "ResultCPU");
-    printVector(resultCuda, "ResultCuda")
-
+    // Run the test suite
+    for(size_t n = 0; n < testRuns; ++n){
+        testSuite(size, min, max);
+    }
+    
 
     return 0;
 }
@@ -182,4 +168,29 @@ void printVector(const vector<float> &vec, const string &label) {
         }
     }
     cout << endl;
+}
+
+void testSuite(int size, float min, float max){
+    vector<float> vec1, vec2;
+
+    // Generate random vectors
+    generateRandomVectors(vec1, vec2, size, min, max);
+
+
+    // CPU Implementation
+    vector<float> resultCPU = addVectorsCPU(vec1, vec2, size);
+
+    // CUDA Implementation
+    vector<float> resultCuda = addVectorsCUDA(vec1, vec2, size);
+
+    // Verify results
+    try {
+        verifyResults(resultCPU, resultCuda);
+    } catch (...) {
+        cerr << "Test failed: Results do not match." << endl;
+        printVector(vec1, "Vector 1");
+        printVector(vec2, "Vector 2");
+        printVector(resultCPU, "CPU Result");
+        printVector(resultCuda, "GPU Result");
+    }
 }

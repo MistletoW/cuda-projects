@@ -4,6 +4,7 @@
 #include <fstream>
 #include <vector>
 #include <cuda_runtime.h>
+#include <random>
 
 using namespace std;
 
@@ -14,6 +15,7 @@ vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2
 __global__ void addVectorsKernel(const float *vec1, const float *vec2, float *result, int size);
 vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
 void verifyResults(const vector<float> &cpuResult, const vector<float> &gpuResult);
+void generateRandomVectors(vector<float> &vec1, vector<float> &vec2, int size, float min, float max);
 
 int main() {
     // Input vectors
@@ -25,15 +27,12 @@ int main() {
     int vectorSize = verifySize(vec1 , vec2); //maybe make this const
 
     // CPU Implementation
-    // Function: addVectorsCPU
     vector<float> resultCPU = addVectorsCPU(vec1, vec2, vectorSize);
 
     // CUDA Implementation
-    // Function: addVectorsCUDA
     vector<float> resultCuda = addVectorsCUDA(vec1, vec2, vectorSize);
 
     // Verify results
-    // Function: verifyResults
     verifyResults(resultCPU, resultCuda);
 
     return 0;
@@ -149,4 +148,18 @@ void verifyResults(const vector<float> &resultCPU, const vector<float> &resultCu
     }
 
     cout << "Match!"<< endl;
+}
+
+void generateRandomVectors(vector<float> &vec1, vector<float> &vec2, int size, float min, float max){
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<float> dis(min, max);
+
+    vec1.resize(size);
+    vec2.resize(size);
+
+    for (int i = 0; i < size; ++i) {
+        vec1[i] = dis(gen);
+        vec2[i] = dis(gen);
+    }
 }

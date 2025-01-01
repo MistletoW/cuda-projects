@@ -16,13 +16,16 @@ __global__ void addVectorsKernel(const float *vec1, const float *vec2, float *re
 vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
 void verifyResults(const vector<float> &cpuResult, const vector<float> &gpuResult);
 void generateRandomVectors(vector<float> &vec1, vector<float> &vec2, int size, float min, float max);
+void printVector(const vector<float> &vec, const string &label);
 
 int main() {
     // Input vectors
     vector<float> vec1, vec2;
 
     // Read vectors from file
-    readVectors("vectors.txt", vec1, vec2);
+    // readVectors("vectors.txt", vec1, vec2);
+
+    generateRandomVectors(vec1, vec2, 10, 0, 10);
 
     int vectorSize = verifySize(vec1 , vec2); //maybe make this const
 
@@ -34,6 +37,12 @@ int main() {
 
     // Verify results
     verifyResults(resultCPU, resultCuda);
+
+    printVector(vec1, "Vec1");
+    printVector(vec2, "Vec2");
+    printVector(resultCPU, "ResultCPU");
+    printVector(resultCuda, "ResultCuda")
+
 
     return 0;
 }
@@ -162,4 +171,15 @@ void generateRandomVectors(vector<float> &vec1, vector<float> &vec2, int size, f
         vec1[i] = dis(gen);
         vec2[i] = dis(gen);
     }
+}
+
+void printVector(const vector<float> &vec, const string &label) {
+    cout << label << ":\n";
+    for (size_t i = 0; i < vec.size(); ++i) {
+        cout << vec[i] << " ";
+        if ((i + 1) % 10 == 0) { // Print 10 elements per line
+            cout << endl;
+        }
+    }
+    cout << endl;
 }

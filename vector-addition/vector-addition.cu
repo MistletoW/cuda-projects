@@ -9,9 +9,10 @@ using namespace std;
 
 // Function prototypes
 void readVectors(const string &filename, vector<float> &vec1, vector<float> &vec2);
-vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2);
+int verifySize(const vector<float> &vec1, const vector<float> &vec2)
+vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
 __global__ void addVectorsKernel(const float *vec1, const float *vec2, float *result, int size);
-vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2);
+vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int vectorSize);
 void verifyResults(const vector<float> &cpuResult, const vector<float> &gpuResult);
 
 int main() {
@@ -21,14 +22,19 @@ int main() {
     // Read vectors from file
     readVectors("vectors.txt", vec1, vec2);
 
+    int vectorSize = verifySize(vec1 , vec2); //maybe make this const
+
     // CPU Implementation
     // Function: addVectorsCPU
+    addVectorsCPU(vec1, vec2, vectorSize);
 
     // CUDA Implementation
     // Function: addVectorsCUDA
+    vector<float> resultCPU = addVectorsCPU(vec1, vec2, vectorSize);
 
     // Verify results
     // Function: verifyResults
+    vector<float> resultCuda = addVectorsCUDA(vec1, vec2, vectorSize);
 
     return 0;
 }
@@ -54,22 +60,76 @@ void readVectors(const string &filename, vector<float> &vec1, vector<float> &vec
 
 // CPU implementation of vector addition
 // Skeleton for: addVectorsCPU
+vector<float> addVectorsCPU(const vector<float> &vec1, const vector<float> &vec2, int vectorSize){
+    vector<float> result(size);
+
+    for (int i = 0; i < size; i++) {
+        result[i] = vec1[i] + vec2[i];
+    }
+}
 
 // CUDA kernel for vector addition
 // Skeleton for: addVectorsKernel
+//Kernel: The specificed computation each thread will perform
+__global__ void addVectorsKernel(const float *vec1, const float *vec2, float *result, int size) {
+    // Calculate the global thread index
+    //blockId.x = index of block within grid
+    //blockDim.x = num of threads in block
+    //threadIDx.x = index of threat in block
+    int id = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Ensure the thread index is within bounds
+    if (id < size) {
+        result[id] = vec1[id] + vec2[id];
+    }
+}
+
 
 // CUDA implementation of vector addition
 // Skeleton for: addVectorsCUDA
+vector<float> addVectorsCUDA(const vector<float> &vec1, const vector<float> &vec2, int VectorSize) {
+    size_t bytes = VectorSize * sizeof(float); //size of vectors we will be adding
+
+    // give our vectrors on GPU the size of a vector we will add
+    float *d_vec1, *d_vec2, *d_result;
+    cudaMalloc(&d_vec1, bytes);
+    cudaMalloc(&d_vec2, bytes);
+    cudaMalloc(&d_result, bytes);
+
+    // give our vectors on the gpu our data from vectors on the cpu
+    cudaMemcpy(d_vec1, vec1.data(), bytes, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_vec2, vec2.data(), bytes, cudaMemcpyHostToDevice);
+
+    // Launch kernel
+    int threads = 256;
+    int blocks = (VectorSize + threads - 1) / threads; //need to calculate the min number of blocks needed to process all elements, threads+1 to round up our blocks
+    //grid with blocks and threads in each block
+    //passes addresses of vectors allocated on the gpu
+    //thread then processes global id and id determines which float in vector each thread processes
+    addVectorsKernel<<<blocks, threads>>>(d_vec1, d_vec2, d_result, VectorSize); 
+
+    // Copy result back to host
+    vector<float> result(size);
+    cudaMemcpy(result.data(), d_result, bytes, cudaMemcpyDeviceToHost);
+
+    // Free device memory
+    cudaFree(d_vec1);
+    cudaFree(d_vec2);
+    cudaFree(d_result);
+
+    return result;
+}
+
 
 // Function to verify results
-void verifyVectorsSameSize(const vector<float> &vec1, const vector<float> &vec2) {
+int verifySize(const vector<float> &vec1, const vector<float> &vec2) {
     if (vec1.size() != vec2.size()) {
-        cerr << "Error: Vectors are not the same size.
-"
-             << "Vector 1 size: " << vec1.size() << "
-"
+        cerr << "Error: Vectors are not the same size." << endl
+             << "Vector 1 size: " << vec1.size() << endl
              << "Vector 2 size: " << vec2.size() << endl;
         exit(EXIT_FAILURE);
     }
+
+    return vec1.size();
 }
 // Skeleton for: verifyResults

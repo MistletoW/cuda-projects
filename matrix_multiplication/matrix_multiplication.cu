@@ -5,8 +5,13 @@
 
 using namespace std;
 
+// Main Function
+int main() {
+    testSuite(10, 0, 10);
+}
+
 // Function to generate a random matrix
-void generateMatrix(Matrix &matrix, int rows, int cols, float min, float max) {
+void generateMatrix(Matrix& matrix, int rows, int cols, float min, float max) {
     random_device rd;
     mt19937 gen(rd());
     uniform_real_distribution<float> dis(min, max);
@@ -20,10 +25,29 @@ void generateMatrix(Matrix &matrix, int rows, int cols, float min, float max) {
 }
 
 // CPU implementation of matrix multiplication
-Matrix matrixMultiplyCPU(const Matrix &A, const Matrix &B) {
-    
-    
-    return Matrix(); // Placeholder
+Matrix matrixMultiplyCPU(const Matrix& A, const Matrix& B) {
+     // Check dimensions
+     if (A[0].size() != B.size()) {
+        cerr << "Error: Incompatible matrix dimensions for multiplication." << endl;
+        return Matrix(); // Return an empty matrix
+    }
+
+    // Initialize result matrix C with appropriate dimensions
+    int rowsA = A.size();
+    int colsA = A[0].size();
+    int colsB = B[0].size();
+    Matrix C(rowsA, vector<float>(colsB, 0.0f));
+
+    // Perform matrix multiplication
+    for (int i = 0; i < rowsA; ++i) {
+        for (int j = 0; j < colsB; ++j) {
+            for (int k = 0; k < colsA; ++k) {
+                C[i][j] += A[i][k] * B[k][j];
+            }
+        }
+    }
+
+    return C;
 }
 
 // CUDA global memory kernel for matrix multiplication
@@ -49,7 +73,7 @@ Matrix matrixMultiplyCUDA_Shared(const Matrix &A, const Matrix &B) {
 }
 
 // Function to verify that two matrices are the same
-bool verifyMatrices(const Matrix &A, const Matrix &B) {
+bool verifyMatrices(const Matrix& A, const Matrix& B) {
     if (A.size() != B.size() || A[0].size() != B[0].size()) {
         cerr << "Error: Matrices have different dimensions." << endl;
         return false;
@@ -69,7 +93,7 @@ bool verifyMatrices(const Matrix &A, const Matrix &B) {
 }
 
 // Function to print a matrix
-void printMatrix(const Matrix &matrix, const string &label) {
+void printMatrix(const Matrix& matrix, const string& label) {
     cout << label << ":\n";
     for (const auto &row : matrix) {
         for (const auto &val : row) {
@@ -81,5 +105,19 @@ void printMatrix(const Matrix &matrix, const string &label) {
 
 // Test suite for matrix multiplication
 void testSuite(int size, float min, float max) {
-    // Implementation will go here
+    Matrix A, B;
+
+    generateMatrix(A, 2, 3, min, max);
+    generateMatrix(B, 3, 2, min, max);
+
+    Matrix C = matrixMultiplyCPU(A, B);
+
+    printMatrix(A, "Matrix A");
+    printMatrix(B, "Matrix B");
+    printMatrix(C, "Matrix C");
+
+    // if(verifyMatrices(A, B)){
+    //     cout << "Match!";
+    // }
+
 }

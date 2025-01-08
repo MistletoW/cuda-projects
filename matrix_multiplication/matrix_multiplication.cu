@@ -7,12 +7,22 @@ using namespace std;
 
 // Function to generate a random matrix
 void generateMatrix(Matrix &matrix, int rows, int cols, float min, float max) {
-    // Implementation will go here
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_real_distribution<float> dis(min, max);
+
+    matrix.resize(rows, vector<float>(cols));
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            matrix[i][j] = dis(gen);
+        }
+    }
 }
 
 // CPU implementation of matrix multiplication
 Matrix matrixMultiplyCPU(const Matrix &A, const Matrix &B) {
-    // Implementation will go here
+    
+    
     return Matrix(); // Placeholder
 }
 
@@ -40,13 +50,33 @@ Matrix matrixMultiplyCUDA_Shared(const Matrix &A, const Matrix &B) {
 
 // Function to verify that two matrices are the same
 bool verifyMatrices(const Matrix &A, const Matrix &B) {
-    // Implementation will go here
-    return true; // Placeholder
+    if (A.size() != B.size() || A[0].size() != B[0].size()) {
+        cerr << "Error: Matrices have different dimensions." << endl;
+        return false;
+    }
+
+    for (size_t i = 0; i < A.size(); ++i) {
+        for (size_t j = 0; j < A[i].size(); ++j) {
+            if (abs(A[i][j] - B[i][j]) > 1e-5) {
+                cerr << "Error: Mismatch at element (" << i << ", " << j << "): "
+                     << "A=" << A[i][j] << ", B=" << B[i][j] << endl;
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 // Function to print a matrix
 void printMatrix(const Matrix &matrix, const string &label) {
-    // Implementation will go here
+    cout << label << ":\n";
+    for (const auto &row : matrix) {
+        for (const auto &val : row) {
+            cout << val << " ";
+        }
+        cout << endl;
+    }
 }
 
 // Test suite for matrix multiplication

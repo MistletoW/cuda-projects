@@ -34,8 +34,9 @@ Matrix matrixMultiplyCPU(const Matrix& A, const Matrix& B) {
 
     // Initialize result matrix C with appropriate dimensions
     int rowsA = A.size(); //m
-    int colsA = A[0].size(); //n
+    int colsA = A[0].size(); //n also rowsB
     int colsB = B[0].size(); //p
+
     Matrix C(rowsA, vector<float>(colsB, 0.0f));
 
     // Perform matrix multiplication
@@ -54,16 +55,77 @@ Matrix matrixMultiplyCPU(const Matrix& A, const Matrix& B) {
 
 // CUDA global memory kernel for matrix multiplication
 __global__ void matrixMultiplyGlobalKernel(const float *A, const float *B, float *C, int rowsA, int colsA, int colsB) {
-    
+    // Compute the row and column for this thread
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Check if the thread is within bounds
+    if (row < rowsA && col < colsB) {
+        float sum = 0.0f;
+
+        // Compute the dot product for C[row][col]
+        for (int k = 0; k < colsA; ++k) {
+            sum += A[row * colsA + k] * B[k * colsB + col];
+        }
+
+        // Write the result to the output matrix
+        C[row * colsB + col] = sum;
+    }
 }
 
 // CUDA global memory implementation of matrix multiplication
-Matrix matrixMultiplyCUDA_Global(const Matrix &A, const Matrix &B) {
-    
+Matrix matrixMultiplyCUDA_Global(const Matrix& A, const Matrix& B) {
+    // Check dimensions
+    if (A[0].size() != B.size()) {
+        cerr << "Error: Incompatible matrix dimensions for multiplication." << endl;
+        return Matrix(); // Return an empty matrix
+    }
 
+    float *d_A, *d_B, *d_C;
 
+    int rowsA = A.size(); //m
+    int colsA = A[0].size(); //n also rowsB
+    int colsB = B[0].size(); //p
 
-    return Matrix();
+    //To calculate bytes for each matrix use
+    //bytes = rows * cols * sizeof(float);
+    size_t bytesA = rowsA * colsA * sizeof(float);
+    size_t bytesB = colsA * colsB * sizeof(float);
+    size_t bytesC = rowsA * colsB * sizeof(float);
+
+    // Allocate memory on the device
+    cudaMalloc(&d_A, bytesA);
+    cudaMalloc(&d_B, bytesB);
+    cudaMalloc(&d_C, bytesC);
+
+    //flatten our matrix to a 1d vector
+    flatA = flattenMatrix(A);
+    flatB = flattenMatrix(B);
+
+    //give our matrix data to the gpu
+    cudaMemcpy(d_A, flatA.data(), bytesA, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, flatB.data(), bytesB, cudaMemcpyHostToDevice);
+
+    //launch kernel
+    dim3 threadsPerBlock(16, 16); //256 threads
+    dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
+
+    matrixMultiplyGlobalKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rowsA, colsA, colsB);
+
+    //create a flatten C
+    vector<float> flatC(rowsA * colsB);
+
+    // Copy the result back to the host
+    cudaMemcpy(flatC.data(), d_C, bytesC, cudaMemcpyDeviceToHost);
+
+    unflattenMatrix(C);
+
+    // Free device memory
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+    return C;
 }
 
 // CUDA shared memory kernel for matrix multiplication
@@ -127,8 +189,8 @@ void testSuite(int size, float min, float max) {
 
 }
 
-std::vector<float> flattenMatrix(const Matrix &matrix) {
-    std::vector<float> flatMatrix;
+vector<float> flattenMatrix(const Matrix &matrix) {
+    vector<float> flatMatrix;
     for (const auto &row : matrix) {
         flatMatrix.insert(flatMatrix.end(), row.begin(), row.end());
     }

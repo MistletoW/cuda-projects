@@ -39,6 +39,6 @@ void testSuite(int size, float min, float max);
 vector<float> flattenMatrix(const Matrix &matrix);
 
 //turn our 1d matrix into a 2d matrix
-Matrix unflattenMatrix(const std::vector<float> &flatMatrix, int rows, int cols);
+Matrix unflattenMatrix(vector<float>& flatMatrix, int rows, int cols);
 
 #endif 

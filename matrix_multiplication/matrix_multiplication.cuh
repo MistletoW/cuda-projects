@@ -35,4 +35,10 @@ void printMatrix(const Matrix &matrix, const string& label);
 // Test suite for matrix multiplication
 void testSuite(int size, float min, float max);
 
+//turn out 2d Matrix into a 1d matrix
+vector<float> flattenMatrix(const Matrix &matrix);
+
+//turn our 1d matrix into a 2d matrix
+Matrix unflattenMatrix(const std::vector<float> &flatMatrix, int rows, int cols);
+
 #endif 

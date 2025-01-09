@@ -33,12 +33,14 @@ Matrix matrixMultiplyCPU(const Matrix& A, const Matrix& B) {
     }
 
     // Initialize result matrix C with appropriate dimensions
-    int rowsA = A.size();
-    int colsA = A[0].size();
-    int colsB = B[0].size();
+    int rowsA = A.size(); //m
+    int colsA = A[0].size(); //n
+    int colsB = B[0].size(); //p
     Matrix C(rowsA, vector<float>(colsB, 0.0f));
 
     // Perform matrix multiplication
+    //We make a matrix of size M x P, so we explore every cell in that Matrix C and then we get every item in that row for A, and column for B.
+    //This shared value is N or k in our for loop
     for (int i = 0; i < rowsA; ++i) {
         for (int j = 0; j < colsB; ++j) {
             for (int k = 0; k < colsA; ++k) {
@@ -52,13 +54,16 @@ Matrix matrixMultiplyCPU(const Matrix& A, const Matrix& B) {
 
 // CUDA global memory kernel for matrix multiplication
 __global__ void matrixMultiplyGlobalKernel(const float *A, const float *B, float *C, int rowsA, int colsA, int colsB) {
-    // Implementation will go here
+    
 }
 
 // CUDA global memory implementation of matrix multiplication
 Matrix matrixMultiplyCUDA_Global(const Matrix &A, const Matrix &B) {
-    // Implementation will go here
-    return Matrix(); // Placeholder
+    
+
+
+
+    return Matrix();
 }
 
 // CUDA shared memory kernel for matrix multiplication
@@ -120,4 +125,23 @@ void testSuite(int size, float min, float max) {
     //     cout << "Match!";
     // }
 
+}
+
+std::vector<float> flattenMatrix(const Matrix &matrix) {
+    std::vector<float> flatMatrix;
+    for (const auto &row : matrix) {
+        flatMatrix.insert(flatMatrix.end(), row.begin(), row.end());
+    }
+    return flatMatrix;
+}
+
+
+Matrix unflattenMatrix(const std::vector<float> &flatMatrix, int rows, int cols) {
+    Matrix matrix(rows, std::vector<float>(cols));
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            matrix[i][j] = flatMatrix[i * cols + j];
+        }
+    }
+    return matrix;
 }

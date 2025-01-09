@@ -99,8 +99,8 @@ Matrix matrixMultiplyCUDA_Global(const Matrix& A, const Matrix& B) {
     cudaMalloc(&d_C, bytesC);
 
     //flatten our matrix to a 1d vector
-    flatA = flattenMatrix(A);
-    flatB = flattenMatrix(B);
+    vector<float> flatA = flattenMatrix(A);
+    vector<float> flatB = flattenMatrix(B);
 
     //give our matrix data to the gpu
     cudaMemcpy(d_A, flatA.data(), bytesA, cudaMemcpyHostToDevice);
@@ -118,7 +118,7 @@ Matrix matrixMultiplyCUDA_Global(const Matrix& A, const Matrix& B) {
     // Copy the result back to the host
     cudaMemcpy(flatC.data(), d_C, bytesC, cudaMemcpyDeviceToHost);
 
-    unflattenMatrix(C);
+    Matrix C = unflattenMatrix(flatC, rowsA, colsB);
 
     // Free device memory
     cudaFree(d_A);
@@ -178,18 +178,15 @@ void testSuite(int size, float min, float max) {
     generateMatrix(B, 3, 2, min, max);
 
     Matrix C = matrixMultiplyCPU(A, B);
+    Matrix D = matrixMultiplyCUDA_Global(A, B);
 
-    printMatrix(A, "Matrix A");
-    printMatrix(B, "Matrix B");
-    printMatrix(C, "Matrix C");
-
-    // if(verifyMatrices(A, B)){
-    //     cout << "Match!";
-    // }
+    if(verifyMatrices(C, D)){
+        cout << "Match!";
+    }
 
 }
 
-vector<float> flattenMatrix(const Matrix &matrix) {
+vector<float> flattenMatrix(const Matrix& matrix) {
     vector<float> flatMatrix;
     for (const auto &row : matrix) {
         flatMatrix.insert(flatMatrix.end(), row.begin(), row.end());
@@ -198,7 +195,7 @@ vector<float> flattenMatrix(const Matrix &matrix) {
 }
 
 
-Matrix unflattenMatrix(const std::vector<float> &flatMatrix, int rows, int cols) {
+Matrix unflattenMatrix(vector<float>& flatMatrix, int rows, int cols) {
     Matrix matrix(rows, std::vector<float>(cols));
     for (int i = 0; i < rows; ++i) {
         for (int j = 0; j < cols; ++j) {

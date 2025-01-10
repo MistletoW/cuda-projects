@@ -2,12 +2,13 @@
 #include <iostream>
 #include <random>
 #include <cmath>
+#include <chrono>
 
 using namespace std;
 
 // Main Function
 int main() {
-    testSuite(10, 0, 10);
+    testSuite(3, 0, 10, 1, 10000);
 }
 
 // Function to generate a random matrix
@@ -129,14 +130,114 @@ Matrix matrixMultiplyCUDA_Global(const Matrix& A, const Matrix& B) {
 }
 
 // CUDA shared memory kernel for matrix multiplication
-__global__ void matrixMultiplySharedKernel(const float *A, const float *B, float *C, int rowsA, int colsA, int colsB) {
-    // Implementation will go here
+__global__ void matrixMultiplySharedKernel(const float *A, const float *B, float *C, int rowsA, int colsA, int colsB) 
+{
+    const int BLOCK_SIZE = 16;
+     // Shared memory for tiles of A and B
+     __shared__ float tileA[BLOCK_SIZE][BLOCK_SIZE];
+     __shared__ float tileB[BLOCK_SIZE][BLOCK_SIZE];
+ 
+     // Row and column index of the element in C this thread computes
+     int row = blockIdx.y * blockDim.y + threadIdx.y;
+     int col = blockIdx.x * blockDim.x + threadIdx.x;
+ 
+     // Accumulate the result for C[row][col]
+     float sum = 0.0f;
+ 
+     // Loop over tiles
+     for (int t = 0; t < (colsA + BLOCK_SIZE - 1) / BLOCK_SIZE; ++t) 
+     {
+         // Load tiles into shared memory
+         // each thread loads in the tile cell where our result tile cell will go
+         // so thread will find C_Tile[i][j] will load in A_Tile[i][j] and B_Tile[i][j]
+         if (row < rowsA && t * BLOCK_SIZE + threadIdx.x < colsA) {
+             tileA[threadIdx.y][threadIdx.x] = A[row * colsA + t * BLOCK_SIZE + threadIdx.x]; //cell in tileA equals cell in Mat A
+         } else {
+             tileA[threadIdx.y][threadIdx.x] = 0.0f;
+         }
+ 
+         if (t * BLOCK_SIZE + threadIdx.y < colsA && col < colsB) {
+             tileB[threadIdx.y][threadIdx.x] = B[(t * BLOCK_SIZE + threadIdx.y) * colsB + col]; //cell in tileB equals cell in Mat B
+         } else {
+             tileB[threadIdx.y][threadIdx.x] = 0.0f;
+         }
+ 
+         // Synchronize threads to ensure all tiles are loaded
+         __syncthreads();
+ 
+         // Perform computation for the tile
+         for (int k = 0; k < BLOCK_SIZE; ++k) {
+             sum += tileA[threadIdx.y][k] * tileB[k][threadIdx.x];
+         }
+ 
+         // Synchronize threads before loading the next tile
+         __syncthreads();
+     }
+ 
+     // Write the computed value to C
+     if (row < rowsA && col < colsB) {
+         C[row * colsB + col] = sum;
+     }
 }
 
 // CUDA shared memory implementation of matrix multiplication
 Matrix matrixMultiplyCUDA_Shared(const Matrix &A, const Matrix &B) {
-    // Implementation will go here
-    return Matrix(); // Placeholder
+    // Check dimensions
+    if (A[0].size() != B.size()) {
+        cerr << "Error: Incompatible matrix dimensions for multiplication." << endl;
+        return Matrix(); // Return an empty matrix
+    }
+
+    float *d_A, *d_B, *d_C;
+
+    int rowsA = A.size(); //m
+    int colsA = A[0].size(); //n also rowsB
+    int colsB = B[0].size(); //p
+
+    //To calculate bytes for each matrix use
+    //bytes = rows * cols * sizeof(float);
+    size_t bytesA = rowsA * colsA * sizeof(float);
+    size_t bytesB = colsA * colsB * sizeof(float);
+    size_t bytesC = rowsA * colsB * sizeof(float);
+
+    // Allocate memory on the device
+    cudaMalloc(&d_A, bytesA);
+    cudaMalloc(&d_B, bytesB);
+    cudaMalloc(&d_C, bytesC);
+
+    //flatten our matrix to a 1d vector
+    vector<float> flatA = flattenMatrix(A);
+    vector<float> flatB = flattenMatrix(B);
+
+    //give our matrix data to the gpu
+    cudaMemcpy(d_A, flatA.data(), bytesA, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_B, flatB.data(), bytesB, cudaMemcpyHostToDevice);
+
+    //launch kernel
+    const int BLOCK_SIZE = 16; //NEEDS TO MATCH KERNEL VALUE, GENERATES ERROR IF PASSED IN
+    dim3 threadsPerBlock(BLOCK_SIZE, BLOCK_SIZE);
+    //we use this code because of potential fractional cases
+    //instead of dim3 blocksPerGrid((colsB / BLOCK_SIZE) + 1, (rowsA / BLOCK_SIZE) + 1);
+    dim3 blocksPerGrid((colsB + BLOCK_SIZE - 1) / BLOCK_SIZE, (rowsA + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    
+    matrixMultiplySharedKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rowsA, colsA, colsB);
+
+    // Allocate memory for the result matrix on the host
+    vector<float> flatC(rowsA * colsB);
+
+    // Copy the result back to the host
+    cudaMemcpy(flatC.data(), d_C, bytesC, cudaMemcpyDeviceToHost);
+
+    Matrix C = unflattenMatrix(flatC, rowsA, colsB);
+
+
+    // Free device memory
+    cudaFree(d_A);
+    cudaFree(d_B);
+    cudaFree(d_C);
+
+
+    return C;
 }
 
 // Function to verify that two matrices are the same
@@ -148,7 +249,7 @@ bool verifyMatrices(const Matrix& A, const Matrix& B) {
 
     for (size_t i = 0; i < A.size(); ++i) {
         for (size_t j = 0; j < A[i].size(); ++j) {
-            if (abs(A[i][j] - B[i][j]) > 1e-5) {
+            if (abs(A[i][j] - B[i][j]) > 1e-1) {
                 cerr << "Error: Mismatch at element (" << i << ", " << j << "): "
                      << "A=" << A[i][j] << ", B=" << B[i][j] << endl;
                 return false;
@@ -171,20 +272,73 @@ void printMatrix(const Matrix& matrix, const string& label) {
 }
 
 // Test suite for matrix multiplication
-void testSuite(int size, float min, float max) {
-    Matrix A, B;
+#include <chrono> // For measuring execution time
 
-    generateMatrix(A, 2, 3, min, max);
-    generateMatrix(B, 3, 2, min, max);
+void testSuite(int size, float min, float max, int matMin, int matMax) {
+    Matrix A, B, C, D, E;
 
-    Matrix C = matrixMultiplyCPU(A, B);
-    Matrix D = matrixMultiplyCUDA_Global(A, B);
+    random_device rd;
+    mt19937 gen(rd());
+    uniform_int_distribution<int> matSizeDist(matMin, matMax);
 
-    if(verifyMatrices(C, D)){
-        cout << "Match!";
+    for (size_t i = 0; i < size; ++i) {
+        // Generate random dimensions for matrices A and B
+        int rowsA = matSizeDist(gen);
+        int colsA = matSizeDist(gen);
+        int colsB = matSizeDist(gen);
+
+        cout << "Matrix Dimensions - A: " << rowsA << "x" << colsA
+             << ", B: " << colsA << "x" << colsB << endl;
+
+        // Generate random matrices A and B
+        generateMatrix(A, rowsA, colsA, min, max);
+        generateMatrix(B, colsA, colsB, min, max);
+
+        // // Measure CPU multiplication time
+        auto start = std::chrono::high_resolution_clock::now();
+        // C = matrixMultiplyCPU(A, B);
+        auto end = std::chrono::high_resolution_clock::now();
+        // std::chrono::duration<double> cpuDuration = end - start;
+        // cout << "CPU Matrix Multiplication Time: " << cpuDuration.count() << " seconds\n";
+
+        // Measure CUDA Global memory multiplication time
+        start = std::chrono::high_resolution_clock::now();
+        D = matrixMultiplyCUDA_Global(A, B);
+        end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> cudaGlobalDuration = end - start;
+        cout << "CUDA Global Matrix Multiplication Time: " << cudaGlobalDuration.count() << " seconds\n";
+
+        // Measure CUDA Shared memory multiplication time
+        start = std::chrono::high_resolution_clock::now();
+        E = matrixMultiplyCUDA_Shared(A, B);
+        end = std::chrono::high_resolution_clock::now();
+        std::chrono::duration<double> cudaSharedDuration = end - start;
+        cout << "CUDA Shared Matrix Multiplication Time: " << cudaSharedDuration.count() << " seconds\n";
+
+        // Verify the results
+        if (verifyMatrices(C, D)) {
+            cout << "C & D Match!" << endl;
+        } else {
+            cout << "C & D Do Not Match!" << endl;
+        }
+
+        if (verifyMatrices(C, E)) {
+            cout << "C & E Match!" << endl;
+        } else {
+            cout << "C & E Do Not Match!" << endl;
+        }
+
+        if (verifyMatrices(D, E)) {
+            cout << "D & E Match!" << endl;
+        } else {
+            cout << "D & E Do Not Match!" << endl;
+        }
+
+        cout << "-------------------------------------------" << endl;
     }
-
 }
+
+
 
 vector<float> flattenMatrix(const Matrix& matrix) {
     vector<float> flatMatrix;

@@ -33,7 +33,7 @@ bool verifyMatrices(const Matrix& A, const Matrix& B);
 void printMatrix(const Matrix &matrix, const string& label);
 
 // Test suite for matrix multiplication
-void testSuite(int size, float min, float max);
+void testSuite(int size, float min, float max, int matMin, int matMax);
 
 //turn out 2d Matrix into a 1d matrix
 vector<float> flattenMatrix(const Matrix& matrix);

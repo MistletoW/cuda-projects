@@ -41,4 +41,10 @@ vector<float> flattenMatrix(const Matrix& matrix);
 //turn our 1d matrix into a 2d matrix
 Matrix unflattenMatrix(vector<float>& flatMatrix, int rows, int cols);
 
+__device__ float pseudoRandomNumber(int seed, int id, float min, float max);
+
+__global__ void generateMatrixCUDAKernel(float *matrix, int rows, int cols, float min, float max, int seed);
+
+void generateMatrixCUDA(Matrix &A, int rows, int cols, float min, float max);
+
 #endif 

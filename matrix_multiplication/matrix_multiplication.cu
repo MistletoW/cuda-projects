@@ -8,7 +8,7 @@ using namespace std;
 
 // Main Function
 int main() {
-    testSuite(3, 0, 10, 1, 10000);
+    testSuite(3, 0, 100, 1, 20000);
 }
 
 // Function to generate a random matrix
@@ -271,9 +271,6 @@ void printMatrix(const Matrix& matrix, const string& label) {
     }
 }
 
-// Test suite for matrix multiplication
-#include <chrono> // For measuring execution time
-
 void testSuite(int size, float min, float max, int matMin, int matMax) {
     Matrix A, B, C, D, E;
 
@@ -291,10 +288,10 @@ void testSuite(int size, float min, float max, int matMin, int matMax) {
              << ", B: " << colsA << "x" << colsB << endl;
 
         // Generate random matrices A and B
-        generateMatrix(A, rowsA, colsA, min, max);
-        generateMatrix(B, colsA, colsB, min, max);
+        generateMatrixCUDA(A, rowsA, colsA, min, max);
+        generateMatrixCUDA(B, colsA, colsB, min, max);
 
-        // // Measure CPU multiplication time
+        // Measure CPU multiplication time
         auto start = std::chrono::high_resolution_clock::now();
         // C = matrixMultiplyCPU(A, B);
         auto end = std::chrono::high_resolution_clock::now();
@@ -311,22 +308,22 @@ void testSuite(int size, float min, float max, int matMin, int matMax) {
         // Measure CUDA Shared memory multiplication time
         start = std::chrono::high_resolution_clock::now();
         E = matrixMultiplyCUDA_Shared(A, B);
-        end = std::chrono::high_resolution_clock::now();
+        end = std::chrono::high_resolution_clock::now(); 
         std::chrono::duration<double> cudaSharedDuration = end - start;
         cout << "CUDA Shared Matrix Multiplication Time: " << cudaSharedDuration.count() << " seconds\n";
 
-        // Verify the results
-        if (verifyMatrices(C, D)) {
-            cout << "C & D Match!" << endl;
-        } else {
-            cout << "C & D Do Not Match!" << endl;
-        }
+        // // Verify the results
+        // if (verifyMatrices(C, D)) {
+        //     cout << "C & D Match!" << endl;
+        // } else {
+        //     cout << "C & D Do Not Match!" << endl;
+        // }
 
-        if (verifyMatrices(C, E)) {
-            cout << "C & E Match!" << endl;
-        } else {
-            cout << "C & E Do Not Match!" << endl;
-        }
+        // if (verifyMatrices(C, E)) {
+        //     cout << "C & E Match!" << endl;
+        // } else {
+        //     cout << "C & E Do Not Match!" << endl;
+        // }
 
         if (verifyMatrices(D, E)) {
             cout << "D & E Match!" << endl;
@@ -338,8 +335,6 @@ void testSuite(int size, float min, float max, int matMin, int matMax) {
     }
 }
 
-
-
 vector<float> flattenMatrix(const Matrix& matrix) {
     vector<float> flatMatrix;
     for (const auto &row : matrix) {
@@ -347,7 +342,6 @@ vector<float> flattenMatrix(const Matrix& matrix) {
     }
     return flatMatrix;
 }
-
 
 Matrix unflattenMatrix(vector<float>& flatMatrix, int rows, int cols) {
     Matrix matrix(rows, std::vector<float>(cols));
@@ -358,3 +352,53 @@ Matrix unflattenMatrix(vector<float>& flatMatrix, int rows, int cols) {
     }
     return matrix;
 }
+
+__device__ float pseudoRandomNumber(int seed, int id, float min, float max) {
+    int hash = id ^ seed;
+    hash = (hash * 0x1e35a7bd) & 0xffffffff;
+    float normalized = (hash / (float)UINT_MAX); // Normalize to [0, 1)
+    return min + normalized * (max - min);       // Scale to [min, max]
+}
+
+__global__ void generateMatrixCUDAKernel(float *matrix, int rows, int cols, float min, float max, int seed) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Establish global ID
+    int globalId = threadIdx.x + blockIdx.x * blockDim.x +
+                   (threadIdx.y + blockIdx.y * blockDim.y) * gridDim.x * blockDim.x;
+
+    if (row < rows && col < cols) {
+        matrix[row * cols + col] = pseudoRandomNumber(seed, globalId, min, max);
+    }
+}
+
+
+void generateMatrixCUDA(Matrix &A, int rows, int cols, float min, float max) {
+    size_t bytes = rows * cols * sizeof(float);
+    float *d_matrix;
+
+    // Allocate memory on the device
+    cudaMalloc(&d_matrix, bytes);
+
+    // Launch kernel
+    dim3 threadsPerBlock(16, 16); // 256 threads
+    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
+
+    int seed = 1234; // Example seed value
+    generateMatrixCUDAKernel<<<blocksPerGrid, threadsPerBlock>>>(d_matrix, rows, cols, min, max, seed);
+
+    // Create a flattened matrix
+    vector<float> flatMatrix(rows * cols);
+
+    // Copy the result back to the host
+    cudaMemcpy(flatMatrix.data(), d_matrix, bytes, cudaMemcpyDeviceToHost);
+
+    // Reshape the flattened matrix into 2D
+    A = unflattenMatrix(flatMatrix, rows, cols);
+
+    // Free device memory
+    cudaFree(d_matrix);
+}
+
+

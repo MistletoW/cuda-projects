@@ -8,7 +8,11 @@ using namespace std;
 
 // Main Function
 int main() {
-    testSuite(3, 0, 100, 1, 20000);
+    // Matrix A;
+    // generateMatrixCUDA(A, 10, 10, 0, 100);
+    // printMatrix(A, "Matrix A");
+    //max needs to be less than 100000 or we run into vector max size issues
+    testSuite(5, 0, 100, 1, 20000);
 }
 
 // Function to generate a random matrix

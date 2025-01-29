@@ -1,106 +1,138 @@
-void generateTensor(Tensor& tensor, int depth, int rows, int cols, float min, float max) {
-    std::random_device rd;
-    std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(min, max);
+#include "tensor.cuh"
+#include <curand_kernel.h>
+#include <cstdlib>
+#include <cmath>
 
-    tensor.resize(depth, std::vector<std::vector<float>>(rows, std::vector<float>(cols)));
-    for (int d = 0; d < depth; ++d) {
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                tensor[d][i][j] = dis(gen);
-            }
-        }
+// Constructor
+Tensor::Tensor(int width, int height, int depth, Layout tensorLayout)
+    : data(nullptr), deviceData(nullptr), layout(tensorLayout) {
+    dims[0] = width;
+    dims[1] = height;
+    dims[2] = depth;
+
+    size_t totalSize = width * height * depth;
+    data = new float[totalSize](); // Initialize to zero
+}
+
+// Destructor
+Tensor::~Tensor() {
+    delete[] data;
+    if (deviceData) {
+        cudaFree(deviceData);
     }
 }
 
-bool verifyTensors(const Tensor& A, const Tensor& B) {
-    if (A.size() != B.size() || A[0].size() != B[0].size() || A[0][0].size() != B[0][0].size()) {
-        std::cerr << "Error: Tensors have different dimensions." << std::endl;
+// Index calculation
+size_t Tensor::index(int x, int y, int z) const {
+    switch (layout) {
+        case ROW_MAJOR:
+            return z * (dims[0] * dims[1]) + y * dims[0] + x;
+        case COLUMN_MAJOR:
+            return x * (dims[1] * dims[2]) + y * dims[2] + z;
+        case DEPTH_MAJOR:
+            return y * (dims[0] * dims[2]) + x * dims[2] + z;
+    }
+    throw std::runtime_error("Invalid layout.");
+}
+
+// Set element
+void Tensor::set(int x, int y, int z, float value) {
+    if (x >= dims[0] || y >= dims[1] || z >= dims[2]) {
+        throw std::out_of_range("Index out of bounds.");
+    }
+    data[index(x, y, z)] = value;
+}
+
+// Get element
+float Tensor::get(int x, int y, int z) const {
+    if (x >= dims[0] || y >= dims[1] || z >= dims[2]) {
+        throw std::out_of_range("Index out of bounds.");
+    }
+    return data[index(x, y, z)];
+}
+
+// Allocate device memory
+void Tensor::allocateDeviceMemory() {
+    if (!deviceData) {
+        size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
+        cudaMalloc(&deviceData, totalSize);
+    }
+}
+
+// Copy data to device
+void Tensor::copyToDevice() {
+    allocateDeviceMemory();
+    size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
+    cudaMemcpy(deviceData, data, totalSize, cudaMemcpyHostToDevice);
+}
+
+// Copy data back to host
+void Tensor::copyToHost() {
+    if (deviceData) {
+        size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
+        cudaMemcpy(data, deviceData, totalSize, cudaMemcpyDeviceToHost);
+    }
+}
+
+// Verify if two tensors are identical
+bool Tensor::verifyTensor(const Tensor& A, const Tensor& B, float tolerance) {
+    if (A.dims[0] != B.dims[0] || A.dims[1] != B.dims[1] || A.dims[2] != B.dims[2]) {
         return false;
     }
-
-    for (size_t d = 0; d < A.size(); ++d) {
-        for (size_t i = 0; i < A[d].size(); ++i) {
-            for (size_t j = 0; j < A[d][i].size(); ++j) {
-                if (std::abs(A[d][i][j] - B[d][i][j]) > 1e-5) {
-                    std::cerr << "Error: Mismatch at element (" << d << ", " << i << ", " << j << "): "
-                              << "A=" << A[d][i][j] << ", B=" << B[d][i][j] << std::endl;
+    
+    for (int z = 0; z < A.dims[2]; ++z) {
+        for (int y = 0; y < A.dims[1]; ++y) {
+            for (int x = 0; x < A.dims[0]; ++x) {
+                float diff = std::abs(A.get(x, y, z) - B.get(x, y, z));
+                if (diff > tolerance) {
                     return false;
                 }
             }
         }
     }
-
     return true;
 }
 
-void printTensor(const Tensor& tensor, const std::string& label) {
-    std::cout << label << ":\n";
-    for (size_t d = 0; d < tensor.size(); ++d) {
-        std::cout << "Depth " << d << ":\n";
-        for (const auto& row : tensor[d]) {
-            for (const auto& val : row) {
-                std::cout << val << " ";
-            }
-            std::cout << "\n";
-        }
-    }
-}
-
-std::vector<float> flattenTensor(const Tensor& tensor) {
-    std::vector<float> flatTensor;
-    for (const auto& matrix : tensor) {
-        for (const auto& row : matrix) {
-            flatTensor.insert(flatTensor.end(), row.begin(), row.end());
-        }
-    }
-    return flatTensor;
-}
-
-Tensor unflattenTensor(const std::vector<float>& flatTensor, int depth, int rows, int cols) {
-    Tensor tensor(depth, std::vector<std::vector<float>>(rows, std::vector<float>(cols)));
-    int idx = 0;
-    for (int d = 0; d < depth; ++d) {
-        for (int i = 0; i < rows; ++i) {
-            for (int j = 0; j < cols; ++j) {
-                tensor[d][i][j] = flatTensor[idx++];
+// Generate a tensor with random numbers (CPU)
+Tensor Tensor::generateTensor(int width, int height, int depth, Layout layout) {
+    Tensor tensor(width, height, depth, layout);
+    for (int z = 0; z < depth; ++z) {
+        for (int y = 0; y < height; ++y) {
+            for (int x = 0; x < width; ++x) {
+                tensor.set(x, y, z, static_cast<float>(rand()) / RAND_MAX);
             }
         }
     }
     return tensor;
 }
 
+// CUDA Kernel for random number generation
+__global__ void Tensor::generateTensorCUDAKernel(float* deviceData, int width, int height, int depth, unsigned long long seed) {
+    int x = threadIdx.x + blockIdx.x * blockDim.x;
+    int y = threadIdx.y + blockIdx.y * blockDim.y;
+    int z = threadIdx.z + blockIdx.z * blockDim.z;
 
-__global__ void generateTensorCUDAKernel(float* tensor, int depth, int rows, int cols, float min, float max, int seed) {
-    int d = blockIdx.z * blockDim.z + threadIdx.z;
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
-
-    if (d < depth && row < rows && col < cols) {
-        int id = d * rows * cols + row * cols + col;
-        int hash = id ^ seed;
-        hash = (hash * 0x1e35a7bd) & 0xffffffff;
-        float normalized = (hash / (float)UINT_MAX);
-        tensor[d * rows * cols + row * cols + col] = min + normalized * (max - min);
+    if (x < width && y < height && z < depth) {
+        int index = z * (width * height) + y * width + x;
+        
+        curandState state;
+        curand_init(seed, index, 0, &state);
+        deviceData[index] = curand_uniform(&state);
     }
 }
 
-void generateTensorCUDA(Tensor& tensor, int depth, int rows, int cols, float min, float max) {
-    size_t bytes = depth * rows * cols * sizeof(float);
-    float* d_tensor;
+// Generate a tensor with random numbers using CUDA
+Tensor Tensor::generateTensorCUDA(int width, int height, int depth, Layout layout) {
+    Tensor tensor(width, height, depth, layout);
+    tensor.allocateDeviceMemory();
 
-    cudaMalloc(&d_tensor, bytes);
+    dim3 threadsPerBlock(8, 8, 8);
+    dim3 numBlocks((width + 7) / 8, (height + 7) / 8, (depth + 7) / 8);
 
-    dim3 threadsPerBlock(8, 8, 8); // 512 threads
-    dim3 blocksPerGrid((cols + 7) / 8, (rows + 7) / 8, (depth + 7) / 8);
+    generateTensorCUDAKernel<<<numBlocks, threadsPerBlock>>>(tensor.deviceData, width, height, depth, clock64());
 
-    int seed = 1234;
-    generateTensorCUDAKernel<<<blocksPerGrid, threadsPerBlock>>>(d_tensor, depth, rows, cols, min, max, seed);
-
-    std::vector<float> flatTensor(depth * rows * cols);
-    cudaMemcpy(flatTensor.data(), d_tensor, bytes, cudaMemcpyDeviceToHost);
-
-    tensor = unflattenTensor(flatTensor, depth, rows, cols);
-
-    cudaFree(d_tensor);
+    cudaDeviceSynchronize();
+    tensor.copyToHost();
+    
+    return tensor;
 }

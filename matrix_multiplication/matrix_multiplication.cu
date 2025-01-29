@@ -12,6 +12,7 @@ int main() {
     // generateMatrixCUDA(A, 10, 10, 0, 100);
     // printMatrix(A, "Matrix A");
     //max needs to be less than 100000 or we run into vector max size issues
+    //large sizes needed to demostrate the true difference between global and shared memory implementation
     testSuite(5, 0, 100, 1, 20000);
 }
 

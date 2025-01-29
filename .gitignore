@@ -1,4 +1,49 @@
+# Ignore compiled object files and binaries
 *.o
 *.bin
 *.out
 *.exe
+
+# Ignore compiled CUDA files
+*.ptx
+*.cubin
+*.fatbin
+*.obj
+
+# Ignore build directories (common for CMake, Makefile, and Bazel builds)
+build/
+cmake-build-debug/
+dist/
+bin/
+obj/
+*.so
+*.a
+*.lib
+*.dll
+
+# Ignore logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+*.bak
+*.dSYM/   # macOS debug files
+
+# Ignore editor/IDE-specific files
+.vscode/
+.idea/
+*.code-workspace
+
+# Ignore Python cache (if applicable)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore VSCode debugging files
+launch.json
+tasks.json
+.vscode/
+
+# Ignore Git merge conflict files
+*.orig

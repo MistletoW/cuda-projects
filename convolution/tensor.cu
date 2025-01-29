@@ -3,6 +3,18 @@
 #include <cstdlib>
 #include <cmath>
 
+// CUDA error checking macro
+#define cuda_error_chk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort=true)
+{
+    if (code != cudaSuccess) 
+    {
+        fprintf(stderr, "GPU Assert: %s at %s: %d\n", cudaGetErrorString(code), file, line);
+        if (abort) 
+            exit(code);
+    }
+}
+
 // Constructor
 Tensor::Tensor(int width, int height, int depth, Layout tensorLayout)
     : data(nullptr), deviceData(nullptr), layout(tensorLayout) {
@@ -18,7 +30,7 @@ Tensor::Tensor(int width, int height, int depth, Layout tensorLayout)
 Tensor::~Tensor() {
     delete[] data;
     if (deviceData) {
-        cudaFree(deviceData);
+        cuda_error_chk(cudaFree(deviceData));
     }
 }
 
@@ -55,7 +67,7 @@ float Tensor::get(int x, int y, int z) const {
 void Tensor::allocateDeviceMemory() {
     if (!deviceData) {
         size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
-        cudaMalloc(&deviceData, totalSize);
+        cuda_error_chk(cudaMalloc(&deviceData, totalSize));
     }
 }
 
@@ -63,14 +75,14 @@ void Tensor::allocateDeviceMemory() {
 void Tensor::copyToDevice() {
     allocateDeviceMemory();
     size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
-    cudaMemcpy(deviceData, data, totalSize, cudaMemcpyHostToDevice);
+    cuda_error_chk(cudaMemcpy(deviceData, data, totalSize, cudaMemcpyHostToDevice));
 }
 
 // Copy data back to host
 void Tensor::copyToHost() {
     if (deviceData) {
         size_t totalSize = dims[0] * dims[1] * dims[2] * sizeof(float);
-        cudaMemcpy(data, deviceData, totalSize, cudaMemcpyDeviceToHost);
+        cuda_error_chk(cudaMemcpy(data, deviceData, totalSize, cudaMemcpyDeviceToHost));
     }
 }
 
@@ -130,8 +142,9 @@ Tensor Tensor::generateTensorCUDA(int width, int height, int depth, Layout layou
     dim3 numBlocks((width + 7) / 8, (height + 7) / 8, (depth + 7) / 8);
 
     generateTensorCUDAKernel<<<numBlocks, threadsPerBlock>>>(tensor.deviceData, width, height, depth, clock64());
+    cuda_error_chk(cudaGetLastError());  // Check for kernel launch errors
+    cuda_error_chk(cudaDeviceSynchronize());  // Ensure all kernel executions complete
 
-    cudaDeviceSynchronize();
     tensor.copyToHost();
     
     return tensor;

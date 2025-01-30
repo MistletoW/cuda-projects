@@ -2,18 +2,7 @@
 #include <curand_kernel.h>
 #include <cstdlib>
 #include <cmath>
-
-// CUDA error checking macro
-#define cuda_error_chk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
-inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort=true)
-{
-    if (code != cudaSuccess) 
-    {
-        fprintf(stderr, "GPU Assert: %s at %s: %d\n", cudaGetErrorString(code), file, line);
-        if (abort) 
-            exit(code);
-    }
-}
+#include <ctime>
 
 // Constructor
 Tensor::Tensor(int width, int height, int depth, Layout tensorLayout)
@@ -49,18 +38,24 @@ size_t Tensor::index(int x, int y, int z) const {
 
 // Set element
 void Tensor::set(int x, int y, int z, float value) {
-    if (x >= dims[0] || y >= dims[1] || z >= dims[2]) {
-        throw std::out_of_range("Index out of bounds.");
-    }
     data[index(x, y, z)] = value;
 }
 
 // Get element
 float Tensor::get(int x, int y, int z) const {
-    if (x >= dims[0] || y >= dims[1] || z >= dims[2]) {
-        throw std::out_of_range("Index out of bounds.");
-    }
     return data[index(x, y, z)];
+}
+
+void Tensor::print() const {
+    for (int z = 0; z < dims[2]; ++z) {
+        for (int y = 0; y < dims[1]; ++y) {
+            for (int x = 0; x < dims[0]; ++x) {
+                std::cout << get(x, y, z) << " ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << "------\n";
+    }
 }
 
 // Allocate device memory
@@ -119,7 +114,7 @@ Tensor Tensor::generateTensor(int width, int height, int depth, Layout layout) {
 }
 
 // CUDA Kernel for random number generation
-__global__ void Tensor::generateTensorCUDAKernel(float* deviceData, int width, int height, int depth, unsigned long long seed) {
+__global__ void generateTensorCUDAKernel(float* deviceData, int width, int height, int depth, unsigned long long seed) {
     int x = threadIdx.x + blockIdx.x * blockDim.x;
     int y = threadIdx.y + blockIdx.y * blockDim.y;
     int z = threadIdx.z + blockIdx.z * blockDim.z;
@@ -128,24 +123,27 @@ __global__ void Tensor::generateTensorCUDAKernel(float* deviceData, int width, i
         int index = z * (width * height) + y * width + x;
         
         curandState state;
-        curand_init(seed, index, 0, &state);
+        curand_init(seed + index, index, 0, &state);
         deviceData[index] = curand_uniform(&state);
     }
 }
 
 // Generate a tensor with random numbers using CUDA
-Tensor Tensor::generateTensorCUDA(int width, int height, int depth, Layout layout) {
-    Tensor tensor(width, height, depth, layout);
-    tensor.allocateDeviceMemory();
+void Tensor::generateTensorCUDA(int width, int height, int depth, Layout layout) {
+    allocateDeviceMemory();  // Ensure device memory is allocated
 
+    // Compute grid and block sizes
     dim3 threadsPerBlock(8, 8, 8);
     dim3 numBlocks((width + 7) / 8, (height + 7) / 8, (depth + 7) / 8);
 
-    generateTensorCUDAKernel<<<numBlocks, threadsPerBlock>>>(tensor.deviceData, width, height, depth, clock64());
+    // Generate seed from host
+    unsigned long long seed = static_cast<unsigned long long>(time(nullptr));
+
+    // Launch CUDA kernel
+    generateTensorCUDAKernel<<<numBlocks, threadsPerBlock>>>(deviceData, width, height, depth, seed);
+    
     cuda_error_chk(cudaGetLastError());  // Check for kernel launch errors
     cuda_error_chk(cudaDeviceSynchronize());  // Ensure all kernel executions complete
 
-    tensor.copyToHost();
-    
-    return tensor;
+    copyToHost();  // Copy data back to host
 }

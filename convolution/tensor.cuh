@@ -1,62 +1,70 @@
-#ifndef TENSOR_CUH
-#define TENSOR_CUH
+#ifndef TENSOR_H
+#define TENSOR_H
 
 #include <cuda_runtime.h>
 #include <curand_kernel.h>
-#include <stdexcept>
 #include <iostream>
+#include <stdexcept>
 
+using namespace std;
+
+// CUDA error checking macro
+#define cuda_error_chk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char* file, int line, bool abort=true)
+{
+    if (code != cudaSuccess) 
+    {
+        fprintf(stderr, "GPU Assert: %s at %s: %d\n", cudaGetErrorString(code), file, line);
+        if (abort) 
+            exit(code);
+    }
+}
+
+// Layout type for tensor storage
+enum Layout { ROW_MAJOR, COLUMN_MAJOR, DEPTH_MAJOR };
+
+// Tensor class definition
 class Tensor {
-private:
-    float* data;         // Host-side data
-    float* deviceData;   // Device-side data for CUDA
-    int dims[3];         // Dimensions: [width, height, depth]
-    enum Layout { ROW_MAJOR, COLUMN_MAJOR, DEPTH_MAJOR } layout;
-
-    // Index calculation based on layout
-    size_t index(int x, int y, int z) const;
-
 public:
-    // Constructor
-    Tensor(int width, int height, int depth, Layout tensorLayout);
+    float* data;         // Host data
+    float* deviceData;   // Device data (CUDA)
+    int dims[3];         // Stores width, height, depth
+    Layout layout;       // Storage layout (Row-Major, Column-Major, etc.)
 
-    // Destructor
+    // Constructor & Destructor
+    Tensor(int width, int height, int depth, Layout tensorLayout = ROW_MAJOR);
     ~Tensor();
 
-    // Set element
+    // Index calculation based on tensor layout
+    size_t index(int x, int y, int z) const;
+
+    // Get & Set functions
     void set(int x, int y, int z, float value);
-
-    // Get element
     float get(int x, int y, int z) const;
-
-    // Allocate device memory
-    void allocateDeviceMemory();
-
-    // Copy data to device
-    void copyToDevice();
-
-    // Copy data back to host
-    void copyToHost();
-
-    // Print tensor
     void print() const;
 
-    // Access dimensions
-    int getWidth() const;
-    int getHeight() const;
-    int getDepth() const;
+    int getWidth() const { return dims[0]; }
+    int getHeight() const { return dims[1]; }
+    int getDepth() const { return dims[2]; }
+    float* getData() const { return data; }
 
-    // Tensor verification (compares two tensors)
+
+    // Device memory management
+    void allocateDeviceMemory();
+    void copyToDevice();
+    void copyToHost();
+
+    // Tensor comparison for validation
     static bool verifyTensor(const Tensor& A, const Tensor& B, float tolerance = 1e-5f);
 
-    // CPU Random Tensor Generator
-    static Tensor generateTensor(int width, int height, int depth, Layout layout);
+    // Random tensor generation (CPU)
+    static Tensor generateTensor(int width, int height, int depth, Layout layout = ROW_MAJOR);
 
-    // CUDA Random Tensor Generator (Launches Kernel)
-    static Tensor generateTensorCUDA(int width, int height, int depth, Layout layout);
-
-    // CUDA Kernel for Random Number Generation
-    __global__ static void generateTensorCUDAKernel(float* deviceData, int width, int height, int depth, unsigned long long seed);
+    // Random tensor generation (CUDA)
+    void generateTensorCUDA(int width, int height, int depth, Layout layout = ROW_MAJOR);
 };
 
-#endif // TENSOR_CUH
+// CUDA Kernel for tensor randomization
+__global__ void generateTensorCUDAKernel(float* deviceData, int width, int height, int depth, unsigned long long seed);
+
+#endif // TENSOR_H
